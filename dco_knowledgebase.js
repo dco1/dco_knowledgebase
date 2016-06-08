@@ -73,8 +73,10 @@ $( document ).ready(function() {
 	
 	function dco_kb_show_new_question_wrapper(){
 		$("#dco_kb_new_question_wrapper").addClass('show');
-		$("#dco_kb_new_user_submission_form").prepend('<a id="close-kb-wrapper" href="#"><i class="fa fa-times-circle text-danger" aria-hidden="true"></i></a>');
+		$("#dco_kb_new_user_submission_form").prepend( $closebutton );
 	}
+	
+	$closebutton = $('<a id="close-kb-wrapper" href="#" class="fa-stack "><i class="fa fa-3x fa-fw fa-circle fa-stack-2x"></i> <i class="fa fa-3x fa-fw fa-times-circle fa-stack-1x"></i></a>');
 	
 	function dco_kb_hide_new_question_wrapper(){
 		$("#dco_kb_new_question_wrapper").removeClass('show');
@@ -128,8 +130,8 @@ $( document ).ready(function() {
 	
 	$(".dco_kb_vote_buttons").each(function(){
 		$(this).append('<p>Did you find this article helpful?</p>');
-		$(this).append( $('<button type="button" name="upvote" class="dco_kb_upvote">' + $(this).attr('data-upvotes') + '</button>') );
-		$(this).append( $('<button type="button" name="downvote" class="dco_kb_downvote">'+ $(this).attr('data-downvotes')  +'</button>') );
+		$(this).append( $('<button type="button" data-post_id="'+  $(this).attr('data-post_id') +'" name="upvote" class="dco_kb_upvote">' + $(this).attr('data-upvotes') + '</button>') );
+		$(this).append( $('<button type="button" ddata-post_id="'+  $(this).attr('data-post_id') +'" name="downvote" class="dco_kb_downvote">'+ $(this).attr('data-downvotes')  +'</button>') );
 	});
 	
 	$(".dco_kb_vote_buttons").on('click', 'button', function(event){
@@ -138,9 +140,9 @@ $( document ).ready(function() {
 		dataTicket = new Object();
 		var $this = $(this);
 		dataTicket.action = 'dco_kb_article_vote';
-		dataTicket.post_id = post_id;
+		dataTicket.post_id = $(this).attr('data-post_id');
 		dataTicket.vote = $(this).attr('name');
-		dataTicket.vote_nonce = $('#vote_nonce').val();
+		dataTicket.vote_nonce = $('#vote_nonce_' + dataTicket.post_id ).val();
 		dco_kb_ajax_post_submit( dataTicket , function( data ){
 			if ( data.new_count ){
 				$this.html(  data.new_count  );

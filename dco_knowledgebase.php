@@ -11,11 +11,11 @@
 
 // Custom Post Type Setup
 
-add_action( 'init', 'register_cpt_dco_knowledgebase' );
+add_action( 'init', 'register_cpt_dco_knowledgebase', 1 );
 function register_cpt_dco_knowledgebase() {
 
 	$labels = array(
-		'name' => __( 'Knowledgebase Articles', 'dco_knowledgebase' ),
+		'name' => __( 'Knowledgebase', 'dco_knowledgebase' ),
 		'singular_name' => __( 'KB Article', 'dco_knowledgebase' ),
 		'add_new' => __( 'Add New Article', 'dco_knowledgebase' ),
 		'add_new_item' => __( 'Add New Knowledgebase Article', 'dco_knowledgebase' ),
@@ -40,7 +40,7 @@ function register_cpt_dco_knowledgebase() {
 		'show_in_nav_menus' => true,
 		'publicly_queryable' => true,
 		'exclude_from_search' => true,
-		'has_archive' => false,
+		'has_archive' => true,
 		'query_var' => true,
 		'can_export' => true,
 		'taxonomies' => array( 'post_tag'),
@@ -57,9 +57,22 @@ function register_cpt_dco_knowledgebase() {
 	register_post_type( 'dco_knowledgebase', $args );
 }
 
-add_action('init', 'dco_kb_rewrite_basic');
+register_deactivation_hook( __FILE__, 'flush_rewrite_rules' );
+register_activation_hook( __FILE__, 'dco_kb_flush_rewrites' );
+function dco_kb_flush_rewrites() {
+	// call your CPT registration function here (it should also be hooked into 'init')
+	dco_kb_rewrite_basic();
+	flush_rewrite_rules();
+}
+
+
+add_action('init', 'dco_kb_rewrite_basic', 99);
 function dco_kb_rewrite_basic() {
-    add_rewrite_rule('^knowledgebase/([^/]*)/([^/]*)/?','index.php?$matches[1]=$matches[2]&post_type=dco_knowledgebase','top');
+	$taxonomy_objects = get_object_taxonomies( 'dco_knowledgebase', 'objects' );
+	foreach($taxonomy_objects as $tax_name => $taxonomy_object){
+		$queryvar = $taxonomy_object->query_var;
+		add_rewrite_rule('^knowledgebase/' . $taxonomy_object->rewrite['slug'] . '/([^/]*)/?','index.php?' . $queryvar .'=$matches[1]&post_type=dco_knowledgebase','top');
+	}
 }
 
 
@@ -73,14 +86,11 @@ function dco_kb_register_resources() {
 	wp_register_style('dco_kb_style', plugins_url( '/dco_knowledgebase.css' , __FILE__ ) );
     wp_register_script( 'dco_kb_script', plugins_url( '/dco_knowledgebase.js' , __FILE__ ), array( 'jquery', 'jquery-ui-autocomplete'  ) );
 	wp_localize_script( 'dco_kb_script', 'ajax_url',  admin_url( 'admin-ajax.php' ));
-
-
 }
 
 function dco_kb_setup_kb_page(){
 	wp_enqueue_script( 'dco_kb_script');
 	wp_enqueue_style('dco_kb_style');
-	add_filter('term_link', 'dco_kb_rewrite_term_edit_link', 10, 3);
 }
 
 
@@ -97,6 +107,23 @@ function dco_kb_rewrite_term_edit_link(  $termlink, $term, $taxonomy  ){
 	return str_replace( site_url() , site_url() . '/knowledgebase', $termlink);
 }
 
+add_filter( 'archive_template', 'dco_kb_custom_post_type_template' ) ;
+function dco_kb_custom_post_type_template( $archive_template ) {
+	global $wp_query;
+    if ( !is_post_type_archive ( 'dco_knowledgebase' ) ) return $archive_template;
+    if ( is_tax() || is_tag() || is_category() ) return $archive_template;
+	set_query_var( 'dco_kb_home', true );
+    dco_kb_setup_kb_page();
+    add_filter('body_class', 'dco_add_knowledgebase_base_page_body_class');
+	return   $archive_template = dirname( __FILE__ ) . '/archive-template.php';
+}
+
+
+add_filter('body_class', 'dco_add_knowledgebase_body_class');
+function dco_add_knowledgebase_base_page_body_class( $body_class ){
+	$body_class[] = "dco_kb_home";
+	return $body_class;
+}
 
 
 ////////////////////////
@@ -105,17 +132,28 @@ function dco_kb_rewrite_term_edit_link(  $termlink, $term, $taxonomy  ){
 
 
 
+
+
 ///////////////
 // Front End //
 ///////////////
+
+add_filter('body_class', 'dco_add_knowledgebase_body_class');
+function dco_add_knowledgebase_body_class( $body_class ){
+	if ( is_post_type_archive('dco_knowledgebase')  || is_singular('dco_knowledgebase')  ){
+		$body_class[] = 'dco_kb';
+	}
+	return $body_class;
+}
 
 
 add_shortcode('knowledgebase', 'dco_kb_render_front');
 function dco_kb_render_front(){
 	dco_kb_setup_kb_page();	
+	add_filter('term_link', 'dco_kb_rewrite_term_edit_link', 10, 3);
 	?>
 	<div class="dco_kb_header">
-		<h2>Knowledgebase</h2>
+		<h2><i class="fa fa-lightbulb-o" aria-hidden="true"></i> Knowledgebase</h2>
 		<?php
 			dco_kb_search_form();
 		?>
@@ -142,34 +180,43 @@ function dco_kb_render_front(){
 
 
 function dco_kb_search_form(){
-	?>
+	echo get_dco_kb_search_form();
+}
+
+
+function get_dco_kb_search_form(){
+	return '
 	<div id="dco_search_form_wrapper">
 	<form id="dco_kb_search_form">
 		<label for="s"><input type="search" name="s" id="dco_kb_search_form_search_field" placeholder="What are you looking for?" /></label>
 		<input type="hidden" name="post_type" value="dco_knowledgebase" />
 
 	</form>
-	</div>
-	<?php
+	</div>';
 }
 
-
 function dco_kb_toc(){
-	$terms = get_terms_id_by_post_type( array('post_tag'), array('dco_knowledgebase') );
-	$i = 0;
-	foreach($terms as $term)  if ($i++ < 10) {
+	$taxonomy_objects = get_object_taxonomies( 'dco_knowledgebase', 'names' );
+	$terms = get_terms_id_by_post_type( $taxonomy_objects , array('dco_knowledgebase') );	$i = 0;
+	foreach($terms as $term)  if ($i++ < 9) {
 		dco_kb_toc_group($term);
 	}
 }
 
 function dco_kb_toc_group($term_id){
-	$term = get_term($term_id, 'post_tag');
+	$term = get_term($term_id );
 	?>
 	<div class="dco_kb_toc_group">
 		<h4 class="dco_kb_toc_group_title"><a href="<?php echo get_term_link($term); ?>"><?php echo $term->name ?></a></h4>
 		<ul>
 			<?php
-				$articles_for_tag = new WP_Query(array( 'post_type' => 'dco_knowledgebase' , 'post_status' => 'publish',  'tag' => $term->slug ));
+				$articles_for_tag = new WP_Query(array( 'posts_per_page' => '5', 'post_type' => 'dco_knowledgebase' , 'post_status' => 'publish',  'tax_query' => array(
+		array(
+			'taxonomy' => $term->taxonomy,
+			'field'    => 'slug',
+			'terms'    =>  $term->slug,
+		),
+	)));
 				if ( $articles_for_tag->have_posts() ) {
 					while ( $articles_for_tag->have_posts() ) { $articles_for_tag->the_post();
 						echo "<li><a href='". get_permalink() ."'>". get_the_title() ."</a></li>";
@@ -182,10 +229,11 @@ function dco_kb_toc_group($term_id){
 }
 
 function dco_kb_tag_cloud( $delimiter = ', ' ){
-	$terms = get_terms_id_by_post_type( array('post_tag'), array('dco_knowledgebase') );
+	$taxonomy_objects = get_object_taxonomies( 'dco_knowledgebase', 'names' );
+	$terms = get_terms_id_by_post_type( $taxonomy_objects , array('dco_knowledgebase') );
 		$output = array();
 		foreach( $terms as $term ) {
-			$term = get_term($term, 'post_tag');
+			$term = get_term( $term );
 			$output[] = '<a class="kb-tag" href="'. get_term_link($term) .'">'. $term->name .'</a>';
 			
 		}
@@ -237,7 +285,7 @@ function dco_kb_render_new_user_submission_form(){
 			<input name="question" class="user-question" type="text" />
 		</fieldset>
 		<fieldset>
-			<p>Your Information (Optional)</p>
+			<h5>Your Information (Optional)</h5>
 			<label for="user['name']">Your Name </label>
 			<input type="text" class="user-name" name="user['name']" />
 			<label for="user['email']">Your Email</label>
@@ -307,15 +355,16 @@ function dco_kb_submission_info_cb( $post ) {
 // UPVOTING / DOWNVOTING //
 ///////////////////////////
 
-add_filter('the_content', 'dco_kb_add_article_vote_buttons_end_of_content');
+add_filter('the_content', 'dco_kb_add_article_vote_buttons_end_of_content', 99);
 function dco_kb_add_article_vote_buttons_end_of_content( $content ){
-	if (!is_singular('dco_knowledgebase')) return $content;
+	if ( 'dco_knowledgebase' != get_post_type() ) return $content;
+	if ( 	get_query_var( 'dco_kb_home' )) return $content;
 	global $post;
 	
 	$upvotes = get_post_meta( $post->ID, 'upvote_count', true);
 	$downvotes = get_post_meta ( $post->ID , 'downvote_count', true);
 
-	$content .= '<div class="dco_kb_vote_buttons" data-upvotes="'.$upvotes.'" data-downvotes="'.$downvotes.'">' .  wp_nonce_field( 'article-vote_'.$post->ID , 'vote_nonce' ) . '</div>';
+	$content .= '<div class="dco_kb_vote_buttons" data-upvotes="'.$upvotes.'" data-downvotes="'.$downvotes.'" data-post_id="'. $post->ID .'">' .  wp_nonce_field( 'article-vote_'.$post->ID , 'vote_nonce_' . $post->ID , true, false ) . '</div>';
 	return $content;
 }
 
@@ -323,7 +372,7 @@ add_action('wp_ajax_dco_kb_article_vote', 'dco_kb_article_vote_cb');
 add_action('wp_ajax_nopriv_dco_kb_article_vote', 'dco_kb_article_vote_cb');
 function dco_kb_article_vote_cb(){
 	if (!isset($_POST['post_id'] ) || !is_numeric($_POST['post_id'])) return false;
-	check_admin_referer( 'article-vote_'.$_POST['post_id'] , 'vote_nonce');
+	check_admin_referer( 'article-vote_'.$_POST['post_id'] , 'vote_nonce' );
 	if (!isset($_POST['vote'])) return false;
 	
 	$post_id = $_POST['post_id'];
@@ -341,10 +390,63 @@ function dco_kb_article_vote_cb(){
 			$current_count++;
 			$return = update_post_meta( $post_id , 'downvote_count', $current_count);
 		break;
-		
+		case "reset":
+			if ( current_user_can( 'manage_options' ) ) {
+				update_post_meta( $post_id, 'upvote_count', 0 );
+				update_post_meta( $post_id , 'downvote_count', 0);
+				wp_send_json_success( array('reset' => $_POST )); 
+			} else {
+				wp_send_json_error('you cannot do this');
+			}
+		break;		
 	}
 	
 	wp_send_json( array('new_count' => $current_count ));
+}
+
+
+add_action( 'add_meta_boxes', 'dco_kb_register_voting_info_metabox' );
+function dco_kb_register_voting_info_metabox() {
+    add_meta_box( 'dco_kb_voting_info', __( 'Votes', 'textdomain' ), 'dco_kb_voting_info_cb', 'dco_knowledgebase', 'side', 'high' );
+}
+ 
+function dco_kb_voting_info_cb( $post ) {
+	echo "<p><strong>Upvotes</strong>: <span class='dco_kb_vote_count'>" . get_post_meta( $post->ID, 'upvote_count', true) . "</span></p>";
+	echo "<p><strong>Downvotes</strong>:  <span class='dco_kb_vote_count'>" . get_post_meta( $post->ID, 'downvote_count', true) . "</span></p>";
+	if ( current_user_can( 'manage_options' ) ) {
+			echo "<p><a href='#'><strong id='dco_kb_reset_votes'>Reset Votes</strong></a></p>";
+			
+			?>
+			<script type="text/javascript">
+				jQuery(document).ready(function($){
+					
+					$("#dco_kb_reset_votes").click(function( event ){
+						
+						event.preventDefault();
+
+						if ( confirm('Are you sure you want to reset the votes?') ) {
+							
+								$.ajax({
+        						type: "POST",
+								url: ajaxurl,
+								dataType: 'json',
+								data: { 'action' : 'dco_kb_article_vote', 'vote' : 'reset', 'post_id' : <?php echo get_the_ID(); ?> ,   'vote_nonce': "<?php echo wp_create_nonce('article-vote_' . get_the_ID() ); ?>" },
+								success: function(data){
+									console.log(data);
+									if ( data.success){
+										$('.dco_kb_vote_count').text("0");
+									}
+								}
+    						});
+    						
+						} // end if
+					});
+					
+					
+				});
+			</script>
+			<?php
+	}
 }
 
 ///////////////////////////
@@ -385,5 +487,7 @@ function dco_kb_build_and_send_unanswered_digest(){
 		
 	}
 }
+
+
 
 
